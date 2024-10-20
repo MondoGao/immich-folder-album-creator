@@ -1172,36 +1172,6 @@ for row in synology_csv:
 
 json.dump(album_to_assets, open("album_to_assets.json", "w"))
 
-sys.exit(0)
-
-
-logging.info("Sorting assets to corresponding albums using folder name")
-for asset in assets:
-    asset_path = asset["originalPath"]
-    # This method will log the ignore reason, so no need to log anyhting again.
-    if is_asset_ignored(asset):
-        continue
-
-    for root_path in root_paths:
-        if root_path not in asset_path:
-            continue
-
-        # Chunks of the asset's path below root_path
-        path_chunks = asset_path.replace(root_path, "").split("/")
-        # A single chunk means it's just the image file in no sub folder, ignore
-        if len(path_chunks) == 1:
-            continue
-
-        # remove last item from path chunks, which is the file name
-        del path_chunks[-1]
-        album_name = create_album_name(path_chunks, album_level_separator)
-        if len(album_name) > 0:
-            album_to_assets[album_name].append(asset["id"])
-        else:
-            logging.warning(
-                "Got empty album name for asset path %s, check your album_level settings!",
-                asset_path,
-            )
 
 album_to_assets = {
     k: v for k, v in sorted(album_to_assets.items(), key=(lambda item: item[0]))
@@ -1209,16 +1179,6 @@ album_to_assets = {
 
 logging.info("%d albums identified", len(album_to_assets))
 logging.info("Album list: %s", list(album_to_assets.keys()))
-
-if not unattended and mode == SCRIPT_MODE_CREATE:
-    if is_docker:
-        print(
-            "Check that this is the list of albums you want to create. Run the container with environment variable UNATTENDED set to 1 to actually create these albums."
-        )
-        exit(0)
-    else:
-        print("Press enter to create these albums, Ctrl+C to abort")
-        input()
 
 album_to_id = {}
 
@@ -1228,46 +1188,6 @@ albums = fetchAlbums()
 album_to_id = {album["albumName"]: album["id"] for album in albums}
 logging.info("%d existing albums identified", len(albums))
 
-# mode CLEANUP
-if mode == SCRIPT_MODE_CLEANUP:
-    albums_to_delete = list()
-    for album in album_to_assets:
-        if album in album_to_id:
-            album_to_delete = dict()
-            album_to_delete["id"] = album_to_id[album]
-            album_to_delete["albumName"] = album
-            albums_to_delete.append(album_to_delete)
-
-    # Delete Confirm check
-    if not delete_confirm:
-        print("Would delete the following albums:")
-        print([a["albumName"] for a in albums_to_delete])
-        if is_docker:
-            print(
-                "Run the container with environment variable DELETE_CONFIRM set to 1 to actually delete these albums!"
-            )
-        else:
-            print(" Call with --delete-confirm to actually delete albums!")
-        exit(0)
-    else:
-        cpt = 0
-        for album_to_delete in albums_to_delete:
-            # If the archived flag is set it means we need to unarchived all images of deleted albums;
-            # In order to do so, we need to fetch all assets of the album we're going to delete
-            assets_in_album = []
-            if archive:
-                assets_in_album = fetchAlbumAssets(album_to_delete["id"])
-            if deleteAlbum(album_to_delete):
-                logging.info("Deleted album %s", album_to_delete["albumName"])
-                cpt += 1
-                if len(assets_in_album) > 0 and archive:
-                    setAssetsArchived([asset["id"] for asset in assets_in_album], False)
-                    logging.info("Unarchived %d assets", len(assets_in_album))
-        logging.info("Deleted %d/%d albums", cpt, len(album_to_assets))
-        exit(0)
-
-
-# mode CREATE
 logging.info("Creating albums if needed")
 created_albums = dict()
 for album in album_to_assets:
